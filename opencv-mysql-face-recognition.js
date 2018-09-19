@@ -1,10 +1,3 @@
-/*
-* This connects to my own MySQL database and tries to recognize the test_image against that
-*
-* Learn more about the OpenCV4nodeJS:
-* https://github.com/justadudewhohacks/opencv4nodejs
-*/
-
 var mysql = require('mysql');
 const cv  = require('opencv4nodejs');
 
@@ -14,25 +7,24 @@ if (!cv.xmodules.face) {
 }
 
 const classifier = new cv.CascadeClassifier(cv.HAAR_FRONTALFACE_ALT2);
-const test_image = "./may1.jpg";
-
-// datasets per person can have a lot of image
-// but we only use max 3 images for now so we need limit to 3
-// using an array (buffer)
+const test_image = "./xyz.jpg";
 let buffer = [];
 
 var conn = mysql.createConnection({
   host: "localhost",
-  user: "query_user",
-  password: "pwd",
-  database: "db"
+  user: "root",
+  password: "Admin.2015!",
+  database: "nampolfrdb"
 });
 
 console.log("============== OpenCV Face Recognizer =============");
 	
 conn.connect(function(err) {
   if (err) throw err;
-    
+  /*let sql = "SELECT d.id, ls.name AS sex, CONCAT(first_name, ' ', last_name) fullname, "+
+			"dataset_filename filename FROM datasets d, dataset_images di"+
+			"WHERE d.id = di.dataset_id AND d.isactive = 1 AND d.sex_id = 1 AND (d.last_name = ? OR d.last_name = ? OR d.last_name = ?)";
+  */      
   let sql = "SELECT \
 				d.id,\
 				ls.name AS sex,\
@@ -48,16 +40,14 @@ conn.connect(function(err) {
 					AND ls.name = 'female'\
 					AND NOT ISNULL(dataset_filename)";
 			
-  conn.query(sql, function (err, results, fields) {
+  conn.query(sql,/*['Siteketa','Geingob', 'Sengdara'],*/ function (err, results, fields) {
     if (err) throw err;
 
-   // debugging: results.forEach((data,idx)=>console.log(idx, data.filename));
+   // results.forEach((data,idx)=>console.log(idx, data.filename));
    for(let record of results){
-	    //console.log(record.id, record.fullname, record.sex, record.filename);
+	    //console.log(record.id, record.fullname, record.filename);
 		
-		// datasets per person can have a lot of image
-    // but we only use max 3 images for now so we need limit to 3
-    // using an array (buffer)
+		// we only use max 3 images for now
 		var total = 0;
 		
 		buffer.forEach(function(elem){
@@ -65,9 +55,7 @@ conn.connect(function(err) {
 					total++;
 		});
 		
-    // max is 3
-		if (total < 3) 
-        buffer.push({id: record.id, fullname: record.fullname, sex: record.sex, filename: record.filename});
+		if (total < 3) buffer.push({id: record.id, fullname: record.fullname, sex: record.sex, filename: '/var/www/html/nampolfrdb/'+record.filename});
    }
    
    if (buffer.length) 
@@ -104,7 +92,7 @@ function recognize_faces(){
 	}
 
 	testImages.forEach(img=>{
-		cv.imshowWait('face', img);
+		cv.imshowWait('Input image', img);
 		cv.destroyAllWindows();
 	});
 	
@@ -114,7 +102,7 @@ function recognize_faces(){
 	var nameMappings = {};
 	
 	buffer.forEach(function(obj){
-		nameMappings[obj.id] = {id: obj.id, fullname: obj.fullname, sex: obj.sex};
+		nameMappings[obj.id] = {id: obj.id, fullname: obj.fullname, sex: obj.sex, filename: obj.filename};
 	});
 
 	var filenames = {};
@@ -132,7 +120,7 @@ function recognize_faces(){
 		// make paths
 		var trainImages = buffer
 						// set the full path
-						.map(obj=> '/var/www/html/nampolfrdb/' + obj.filename)
+						.map(obj=> obj.filename)
 						// read it in
 						.map(filePath => cv.imread(filePath))
 						// grayscale it
@@ -178,8 +166,12 @@ function recognize_faces(){
 		predictions[obj.fullname] = result.confidence;
 		
 		console.log(`predicted: %s, confidence: %s`, obj.fullname, result.confidence);
-		//cv.imshowWait('face', img);
-		//cv.destroyAllWindows();
+		
+		console.log(obj.filename);
+		
+		let mat = cv.imread(obj.filename);
+		cv.imshowWait('Possible Match', mat);
+		cv.destroyAllWindows();
 	  });
 	};
 
