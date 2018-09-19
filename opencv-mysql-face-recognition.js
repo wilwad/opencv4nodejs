@@ -1,7 +1,7 @@
 /*
 * This connects to my own MySQL database and tries to recognize the test_image against that
 *
-* 
+* Learn more about the OpenCV4nodeJS:
 * https://github.com/justadudewhohacks/opencv4nodejs
 */
 
