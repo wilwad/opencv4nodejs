@@ -1,3 +1,17 @@
+/*
+* WebSocket server
+*
+* accepts image in base64 string (minus the image tag)
+*
+* e.g. your client: 		
+		var base64 = currCanvas.toDataURL('image/jpeg',0.9)
+						 .replace('data:image/png;base64,','')
+						 .replace('data:image/jpeg;base64,','');				 
+		socket.send(JSON.stringify({"action":"facedetect", "base64": base64 }));
+		
+* returned:
+* 	for reach face: face.x, face.y, face.width, face.height
+*/
 const cv = require('opencv4nodejs');
 const classifier = new cv.CascadeClassifier(cv.HAAR_FRONTALFACE_ALT2);
 
