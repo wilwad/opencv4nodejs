@@ -7,7 +7,11 @@ if (!cv.xmodules.face) {
 }
 
 const classifier = new cv.CascadeClassifier(cv.HAAR_FRONTALFACE_ALT2);
-const test_image = "./xyz.jpg";
+
+const dim_width  = 80;
+const dim_height = 80;
+
+const test_image = "./kavar.jpg";
 let buffer = [];
 
 var conn = mysql.createConnection({
@@ -20,34 +24,34 @@ var conn = mysql.createConnection({
 console.log("============== OpenCV Face Recognizer =============");
 	
 conn.connect(function(err) {
-  if (err) throw err;
-  /*let sql = "SELECT d.id, ls.name AS sex, CONCAT(first_name, ' ', last_name) fullname, "+
-			"dataset_filename filename FROM datasets d, dataset_images di"+
-			"WHERE d.id = di.dataset_id AND d.isactive = 1 AND d.sex_id = 1 AND (d.last_name = ? OR d.last_name = ? OR d.last_name = ?)";
-  */      
+  if (err) throw err;    
   let sql = "SELECT \
-				d.id,\
-				ls.name AS sex,\
-				CONCAT(first_name, ' ', last_name) fullname,\
-				dataset_filename filename\
+				d.id, \
+				ls.name AS sex, \
+				lc.name AS category, \
+				CONCAT(first_name, ' ', last_name) fullname, \
+				dataset_filename filename \
 			FROM\
-				datasets d,\
-				dataset_images di,\
-				list_sex ls\
+				datasets d, \
+				dataset_images di, \
+				list_sex ls, \
+				list_categories lc\
 			WHERE\
-				d.id = dataset_id AND d.isactive = 1\
-					AND d.sex_id = ls.id\
-					AND ls.name = 'female'\
-					AND NOT ISNULL(dataset_filename)";
+				d.id = dataset_id AND d.isactive = 1 \
+					AND d.sex_id = ls.id \
+					AND d.category_id = lc.id \
+					AND ls.name = 'female' \
+					AND NOT ISNULL(dataset_filename) \
+			ORDER BY \
+				d.id DESC;";
 			
-  conn.query(sql,/*['Siteketa','Geingob', 'Sengdara'],*/ function (err, results, fields) {
+  conn.query(sql, function (err, results, fields) {
     if (err) throw err;
 
-   // results.forEach((data,idx)=>console.log(idx, data.filename));
    for(let record of results){
-	    //console.log(record.id, record.fullname, record.filename);
+	    //[record.id, record.fullname, record.sex, record.filename];
 		
-		// we only use max 3 images for now
+		// limit to 3 images even if dataset has more
 		var total = 0;
 		
 		buffer.forEach(function(elem){
@@ -55,7 +59,12 @@ conn.connect(function(err) {
 					total++;
 		});
 		
-		if (total < 3) buffer.push({id: record.id, fullname: record.fullname, sex: record.sex, filename: '/var/www/html/nampolfrdb/'+record.filename});
+		if (total < 3) 
+		    buffer.push({id: record.id, 
+				         fullname: record.fullname, 
+				         sex: record.sex, 
+				         category: record.category,
+				         filename: '/var/www/html/nampolfrdb/'+record.filename});
    }
    
    if (buffer.length) 
@@ -75,19 +84,18 @@ function recognize_faces(){
 		process.exit();
 	}
 
-	console.log(objects.length, 'faces detected in test image');
+	console.log('[',objects.length,']', 'faces detected in test image');
 	
 	var testImages = [];
-	
-	// we can write the crops
 	var idx = 0;
 	
 	for (let face of objects){
 		var filename = test_image;
 		let ext      = filename.substr(filename.lastIndexOf('.'));
-		filename     = filename.replace(ext,'') + "_" + idx + "_cropped_200x200" + ext;
-		cv.imwrite(filename, grayImg.getRegion(face).resize(200,200));
-		testImages.push( grayImg.getRegion(face).resize(200,200) );
+		
+		filename     = filename.replace(ext,'') + "_" + idx + "_cropped_80x80" + ext;
+		cv.imwrite(filename, grayImg.getRegion(face).resize(dim_width, dim_height));
+		testImages.push( grayImg.getRegion(face).resize(dim_width, dim_height) );
 		idx++;
 	}
 
@@ -102,7 +110,11 @@ function recognize_faces(){
 	var nameMappings = {};
 	
 	buffer.forEach(function(obj){
-		nameMappings[obj.id] = {id: obj.id, fullname: obj.fullname, sex: obj.sex, filename: obj.filename};
+		nameMappings[obj.id] = {id: obj.id, 
+								fullname: obj.fullname, 
+								sex: obj.sex, 
+								category: obj.category,
+								filename: obj.filename};
 	});
 
 	var filenames = {};
@@ -124,8 +136,9 @@ function recognize_faces(){
 						// read it in
 						.map(filePath => cv.imread(filePath))
 						// grayscale it
-						.map(img => img.bgrToGray());
-					
+						.map(img => img.bgrToGray())
+						// reduce the dimensions
+						.map(grayImg => grayImg.resize(dim_width, dim_height));
 	} catch (error){
 		console.log("Failed to read image:",error);
 		return;
@@ -133,24 +146,25 @@ function recognize_faces(){
 				
 	// make labels
 	var labels = buffer
-				// set the full path
+				// [id1_a, id1_b, id1_c, id2_a, id2_b, id2_c]
 				.map(obj=> obj.id);
 
 	console.log("Input file name:", test_image);
-	console.log("\n");
 	console.log('Recognition dataset: ', buffer.length);
-	//console.log('\n');
-	//console.log('Filenames:\n', filenames);
+	console.log('Candidates:\n');
+	for (var obj in nameMappings)
+		 console.log(obj, nameMappings[obj].fullname, '(Sex:',nameMappings[obj].sex, ', Category:',nameMappings[obj].category,')');
+		 
 	console.log('\n');
-	console.log('Candidates:\n', nameMappings);
-	console.log('\n');
-	console.log('Labels:\n',labels);
+	console.log('Labels:');
+	console.log('[', labels.join(","),']');
 	
-	// training
+	// our 3 face recognizers
 	const eigen  = new cv.EigenFaceRecognizer();
 	const fisher = new cv.FisherFaceRecognizer();
 	const lbph   = new cv.LBPHFaceRecognizer();
 	
+	// training the face recognizers
 	eigen.train(trainImages, labels);
 	fisher.train(trainImages, labels);
 	lbph.train(trainImages, labels);
@@ -167,30 +181,34 @@ function recognize_faces(){
 		
 		console.log(`predicted: %s, confidence: %s`, obj.fullname, result.confidence);
 		
-		console.log(obj.filename);
-		
 		let mat = cv.imread(obj.filename);
-		cv.imshowWait('Possible Match', mat);
+		cv.imshowWait(obj.fullname, mat);
 		cv.destroyAllWindows();
 	  });
 	};
 
-	console.log('\n\n');
-	
-	console.log('Eigen recognizer:');
+	console.log('');
+	console.log('> Eigen recognizer:');
+	var start= new Date();
 	runPrediction(eigen);
-	console.log('\n');
+	console.log('Time taken:', new Date() - start);
 	
-	console.log('Fisher recognizer:');
+	console.log('');
+	console.log('> Fisher recognizer:');
+	
+	var start= new Date();
 	runPrediction(fisher);
-	console.log('\n');
+	console.log('Time taken:', new Date() - start);
 	
-	console.log('LBPH recognizer:');
+	console.log('');
+	console.log('> LBPH recognizer:');
+	
+	var start= new Date();
 	runPrediction(lbph);
+	console.log('Time taken:', new Date() - start);
 	
-	console.log('\n\n');
-	console.log('---- done ---- ');	
-	console.log(':: Possible matches ::');
+	console.log('\n');
+	console.log('======= Possible matches =======');
 
 	console.log(predictions);
 	
