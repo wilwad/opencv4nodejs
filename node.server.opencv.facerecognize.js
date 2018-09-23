@@ -139,7 +139,7 @@ wss.on('connection', function connection(ws,req) {
 						   
 						   if (buffer.length){
 							   let start = new Date().getTime();
-							   recognize_faces(ws, base64data);
+							   recognize_faces(ws, grayImg);
 							   let end   = new Date().getTime();
 							   let millis = end - start;
 							   
@@ -177,13 +177,7 @@ wss.broadcast = function broadcast(data) {
 		});
 };
 
-function recognize_faces(socket, base64data){
-	const buff  = Buffer.from(base64data,'base64');
-	const mat   = cv.imdecode(buff); //Image is now represented as Mat
-					
-	//const   mat   = cv.imread(test_image);
-    const grayImg = mat.bgrToGray();
-    
+function recognize_faces(socket, grayImg){
     /*
     const { objects, numDetections } = classifier.detectMultiScale(grayImg);
     
